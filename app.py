@@ -1,25 +1,31 @@
-import streamlit as st
+from flask import Flask, request, jsonify, render_template
 import fitz  # PyMuPDF for extracting images from PDF
 import pytesseract
-import google.generativeai as genai
 from PIL import Image
 import io
+import google.generativeai as genai
 
-# Configure Google Gemini API (Free)
+app = Flask(__name__)
+
+# Configure Google Gemini API
 GEMINI_API_KEY = "AIzaSyDqzBpYNdc1MnM5cchcO9HJB47TAHJQzn8"
 genai.configure(api_key=GEMINI_API_KEY)
 
-# Path to Tesseract OCR (Windows users need to set this)
-pytesseract.pytesseract.tesseract_cmd = r"C:\Program Files\Tesseract-OCR\tesseract.exe"  # Update this if needed
+# Set Tesseract OCR path (Update if necessary)
+pytesseract.pytesseract.tesseract_cmd = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
 
-# Function to extract text from PDF images
+# Global variable to store extracted text
+extracted_text = ""
+
+# Function to extract text from scanned PDFs
 def extract_text_from_pdf(pdf_file):
+    global extracted_text
+    extracted_text = ""  # Reset previous data
     doc = fitz.open(stream=pdf_file.read(), filetype="pdf")
-    extracted_text = []
 
     for page in doc:
         images = page.get_images(full=True)
-        for img_index, img in enumerate(images):
+        for img in images:
             xref = img[0]
             base_image = doc.extract_image(xref)
             image_data = base_image["image"]
@@ -27,51 +33,48 @@ def extract_text_from_pdf(pdf_file):
 
             # Extract text using Tesseract OCR
             text = pytesseract.image_to_string(image)
-            extracted_text.append(text)
-    
+            extracted_text += text + "\n\n"  # Store all extracted text
+
     return extracted_text
 
-# Function to generate flashcards with Gemini
-def generate_flashcards(text_chunks):
-    flashcards = []
-    for chunk in text_chunks[:5]:  # Process first 5 chunks to avoid long responses
-        prompt = f"Extract key concepts and generate Q&A-style flashcards:\n\n{chunk[:2000]}"
-        model = genai.GenerativeModel("gemini-pro")
-        response = model.generate_content(prompt)
-        flashcards.append(response.text)
-    return flashcards
+@app.route("/")
+def home():
+    return render_template("index.html")
 
-# Streamlit UI
-st.title("📚 AI Flashcard Generator")
-st.write("Upload a **scanned book PDF**, and I'll generate **study flashcards** ")
-uploaded_file = st.file_uploader("Upload your textbook (PDF format)", type=["pdf"])
+@app.route("/upload", methods=["POST"])
+def upload():
+    if "file" not in request.files:
+        return jsonify({"error": "No file uploaded!"})
 
-if uploaded_file:
-    st.write("📖 Extracting text from book images (OCR in progress)...")
-    
-    # Extract Text using OCR
-    extracted_text_chunks = extract_text_from_pdf(uploaded_file)
-    
-    if extracted_text_chunks:
-        st.success("✅ OCR Completed! Generating Flashcards...")
+    file = request.files["file"]
+    if file.filename == "":
+        return jsonify({"error": "No selected file!"})
 
-        # Generate Flashcards
-        flashcards = generate_flashcards(extracted_text_chunks)
+    extracted_text = extract_text_from_pdf(file)
+    return jsonify({"message": "✅ Upload & Extraction Completed!", "preview": extracted_text[:1000]})
 
-        st.subheader("🎓 Generated Flashcards")
-        for i, card in enumerate(flashcards):
-            st.text_area(f"Flashcards (Batch {i+1})", card, height=300)
-    else:
-        st.error("❌ No text found. Try a different PDF.")
+@app.route("/get_study_material", methods=["POST"])
+def get_study_material():
+    global extracted_text
+    data = request.json
+    topic = data.get("topic", "").lower()
 
-# Study Material Section
-st.subheader("📌 Get Study Material on a Specific Topic")
-user_query = st.text_input("Enter your topic:")
-if user_query:
-    combined_text = " ".join(extracted_text_chunks[:5])  # Use first few chunks
-    prompt = f"Generate study material on '{user_query}' from this text:\n\n{combined_text[:2000]}"
+    if not extracted_text:
+        return jsonify({"error": "No text available. Upload a PDF first!"})
+
+    # Search for relevant content in extracted text
+    lines = extracted_text.split("\n")
+    relevant_content = "\n".join([line for line in lines if topic in line.lower()])
+
+    if not relevant_content.strip():
+        return jsonify({"message": f"No content found for topic: {topic}"})
+
+    # Summarize relevant content using Google Gemini
     model = genai.GenerativeModel("gemini-pro")
-    study_material = model.generate_content(prompt).text
-    st.text_area("📖 Study Material:", study_material, height=200)
+    prompt = f"Summarize the following content in a structured and detailed manner:\n\n{relevant_content[:2000]}"
+    response = model.generate_content(prompt)
 
-st.info("🔹 This app uses **Google Gemini Pro (Free Tier)** for LLM responses.")
+    return jsonify({"topic": topic, "study_material": response.text})
+
+if __name__ == "__main__":
+    app.run(debug=True)

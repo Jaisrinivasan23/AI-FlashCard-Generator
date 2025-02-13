@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Flashcard Generator</title>
+    <script>
+        function uploadPDF() {
+            let formData = new FormData();
+            let fileInput = document.getElementById("pdfFile");
+            formData.append("file", fileInput.files[0]);
+
+            fetch("/upload", { method: "POST", body: formData })
+            .then(response => response.json())
+            .then(data => {
+                alert(data.message);
+                document.getElementById("extractedPreview").innerText = data.preview;
+            })
+            .catch(error => console.error("Error:", error));
+        }
+
+        function getStudyMaterial() {
+            let topic = document.getElementById("topic").value;
+
+            fetch("/get_study_material", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ topic: topic })
+            })
+            .then(response => response.json())
+            .then(data => {
+                document.getElementById("studyMaterial").innerText = data.study_material || data.message;
+            })
+            .catch(error => console.error("Error:", error));
+        }
+    </script>
+</head>
+<body>
+    <h2>📚 AI Flashcard Generator</h2>
+    <p>Upload a **scanned book PDF**, and I'll extract text for study materials.</p>
+
+    <input type="file" id="pdfFile">
+    <button onclick="uploadPDF()">Upload & Extract Text</button>
+
+    <h3>📖 Extracted Preview:</h3>
+    <p id="extractedPreview"></p>
+
+    <h3>📌 Get Study Material on a Specific Topic</h3>
+    <input type="text" id="topic" placeholder="Enter topic">
+    <button onclick="getStudyMaterial()">Get Study Material</button>
+
+    <h3>📖 Study Material:</h3>
+    <p id="studyMaterial"></p>
+</body>
+</html>
