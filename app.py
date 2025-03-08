@@ -8,7 +8,7 @@ import google.generativeai as genai
 app = Flask(__name__)
 
 # Configure Google Gemini API
-GEMINI_API_KEY = "AIzaSyDqzBpYNdc1MnM5cchcO9HJB47TAHJQzn8"
+GEMINI_API_KEY = "Your Gemini API Key"
 genai.configure(api_key=GEMINI_API_KEY)
 
 # Set Tesseract OCR path (Update if necessary)
